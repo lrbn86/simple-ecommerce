@@ -18,6 +18,7 @@ app.use(morgan('combined'));
 
 app.post('/v1/register', handleRegister);
 app.post('/v1/login', handleLogin);
+app.get('/v1/apikey', getApiKey);
 
 app.post('/v1/products', createProduct);
 app.get('/v1/products', getProducts);
@@ -52,19 +53,97 @@ async function handleServerStart() {
   console.log(`Server started on http://localhost:${process.env.PORT}`);
 }
 
-async function handleRegister(req: Request, res: Response, next: NextFunction) { }
+async function handleRegister(req: Request, res: Response, next: NextFunction) {
+  const email = req?.body?.email;
+  const password = req?.body?.password;
 
-async function handleLogin(req: Request, res: Response, next: NextFunction) { }
+  if (!email || !password) return res.status(400).json({ message: 'Both email and password are required.' });
 
-async function createProduct(req: Request, res: Response, next: NextFunction) { }
+  const passwordHash = await bcrypt.hash(password, 12);
 
-async function getProducts(req: Request, res: Response, next: NextFunction) { }
+  const user = {
+    id: crypto.randomUUID(),
+    email,
+    password: passwordHash,
+    role: 'user',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
-async function getProduct(req: Request, res: Response, next: NextFunction) { }
+  return res.status(201).json({ message: 'User created successfully', data: { id: user.id, email: user.email, role: user.role } });
+}
 
-async function updateProduct(req: Request, res: Response, next: NextFunction) { }
+async function handleLogin(req: Request, res: Response, next: NextFunction) {
+  const email = req?.body?.email;
+  const password = req?.body?.password;
 
-async function deleteProduct(req: Request, res: Response, next: NextFunction) { }
+  if (!email || !password) return res.status(400).json({ message: 'Both email and password are required.' });
+
+  const user = db.findUser(email);
+  const fakeHash = await bcrypt.hash('fake-password', 12);
+  const ok = await bcrypt.compare(password, user?.password ?? fakeHash);
+
+  if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+
+  const payload = {
+    sub: user?.id,
+    email: user?.email,
+    role: user?.role,
+  };
+
+  if (!process.env.JWT_SECRET_KEY) throw new Error('JWT_SECRET_KEY undefined');
+
+  const token = jwt.sign(payload, process.env.JWT_SECRET_KEY, { expiresIn: '5m' });
+
+  return res.status(200).json({ token });
+}
+
+async function getApiKey(req: Request, res: Response, next: NextFunction) {
+  const user = res.locals.user;
+  const apiKey = crypto.randomBytes(32).toString('hex');
+
+  db.insertApiKey(user, apiKey);
+
+  return res.status(200).json({ message: `Generated api key for ${user.id}`, apiKey });
+}
+
+async function createProduct(req: Request, res: Response, next: NextFunction) {
+  const name = req?.body?.name;
+  const description = req?.body?.description;
+  const price = req?.body?.price;
+  const imageUrl = req?.body?.imageUrl;
+
+  const product = {
+    id: crypto.randomUUID(),
+    name,
+    description,
+    price,
+    imageUrl,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  return res.status(201).json({ message: 'Created a product', data: { product } })
+}
+
+async function getProducts(req: Request, res: Response, next: NextFunction) {
+  return res.status(200).json({ message: 'Get products', data: {} });
+}
+
+async function getProduct(req: Request, res: Response, next: NextFunction) {
+  const productId = req?.params?.productId;
+  return res.status(200).json({ message: 'Get product', data: { productId } });
+}
+
+async function updateProduct(req: Request, res: Response, next: NextFunction) {
+  const productId = req?.params?.productId;
+  return res.status(200).json({ message: 'Update product', data: { productId } });
+}
+
+async function deleteProduct(req: Request, res: Response, next: NextFunction) {
+  const productId = req?.params?.productId;
+  return res.status(204).json({ message: 'Deleted a product' });
+}
 
 async function createCart(req: Request, res: Response, next: NextFunction) { }
 
